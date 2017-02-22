@@ -1,3 +1,6 @@
+#!/usr/bin/env python
+"docstring: this is the script for get all snapshots' size and size warning email to admin"
+
 import boto.ec2
 import smtplib
 from email.mime.multipart import MIMEMultipart
