@@ -1,0 +1,82 @@
+#!/usr/bin/env python
+"docstring: this is the script for creating snapshots for AWS EC2"
+
+import boto.ec2
+from datetime import datetime as dt
+import json
+import datetime
+import time
+import sys
+import os
+
+MAX_SNAPSHOTS = 5   # Number of snapshots to keep
+#Example: snaplist = ['snap-xxxxxx']
+snaplist = ['ID FOR SNAOSHOTS WHICH NEED TO BE EXCLUDED']
+
+def create_snapshots():
+    # Connect to EC2 in this region
+    connection = boto.ec2.connect_to_region(
+        "cn-north-1",
+        aws_access_key_id='YOUR AWS SECRET ID HERE',
+        aws_secret_access_key='YOUR AWS ACCESS SECRET HERE')
+    volumes = connection.get_all_volumes()
+    
+# Create a snapshot of each volume
+    for v in volumes:
+        try:
+            if v.volume_state() == 'in-use':
+                desc = "Backup Created From: " + v.id
+                snap = connection.create_snapshot(v.id, description=desc)
+
+                # Too many snapshots?
+                snapshots = v.snapshots()
+                if len(snapshots) > MAX_SNAPSHOTS:
+
+                # Delete oldest snapshots, but keep MAX_SNAPSHOTS available
+                    snap_sorted = sorted([(s.id, s.start_time)
+                    for s in snapshots], key=lambda k: k[1])
+                    for s in snap_sorted[:-MAX_SNAPSHOTS]:
+                        try:
+                            if s[0] not in snaplist:
+                                connection.delete_snapshot(s[0])
+                                print ("Removing old snapshots of: " + v.id)
+                        except:
+                            print("Error Deleting Snapshot" + s[0])
+                            print("This Snapshot may be in use by an AMI")
+                            continue
+        except (AttributeError, NameError):
+            continue
+        else:
+            pass
+        finally:
+            pass
+
+    # After the volumes have been created and the snapshots in roation have been removed,
+    #     we need to ensure that there are no more snapshots.
+    snapshots = connection.get_all_snapshots(owner="self")
+    currentdate = time.strftime("%Y-%m-%d")
+    print("Removing old Snapshots")
+
+    for s in snapshots:
+        stime = s.start_time
+        snaptime = dt.strptime(stime.split("T")[0], "%Y-%m-%d")
+        current = dt.strptime(currentdate, "%Y-%m-%d")
+        delta = current - snaptime
+        # Keep the same amount of MAX_SNAPSHOTS
+        if delta.days > MAX_SNAPSHOTS and s.id not in snaplist:
+            try:
+                print("Deleting Snapshot: " + s.id)
+                connection.delete_snapshot(s.id)
+            except:
+                print("Error Deleting Snapshot" + s.id)
+                print("This Snapshot may be in use by an AMI")
+                continue
+
+
+def main():
+    "main entrance"
+
+    create_snapshots()
+
+if __name__ == '__main__':
+    main()
